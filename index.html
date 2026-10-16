@@ -1,0 +1,1504 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Lector de recetas médicas</title>
+<style>
+  :root { --bg:#f4f8fb; --card:#fff; --ink:#12263a; --muted:#5b6f82; --brand:#0e7c86; --brand-d:#0a5c64; --line:#d8e3ec; --warn-bg:#fff4d6; --warn-line:#e6c766; --bad:#b3261e; --ok:#1b7f3b; }
+  * { box-sizing:border-box; }
+  /* Sin esto, reglas como "video { display:block }" anulan el atributo hidden y el video vacío tapa la foto */
+  [hidden] { display:none !important; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); padding:env(safe-area-inset-top) 16px 32px; }
+  main { max-width:640px; margin:0 auto; }
+  h1 { font-size:1.35rem; margin:18px 0 4px; }
+  p.sub { margin:0 0 14px; color:var(--muted); font-size:.92rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:14px; }
+  .viewer { position:relative; background:#0b1620; border-radius:12px; overflow:hidden; aspect-ratio:3/4; display:none; }
+  .viewer.on { display:block; }
+  video, .viewer img { width:100%; height:100%; object-fit:cover; display:block; }
+  .viewer img { object-fit:contain; }
+  .guide { position:absolute; inset:8% 6%; border:2px dashed rgba(255,255,255,.7); border-radius:10px; pointer-events:none; }
+  .hint { position:absolute; left:0; right:0; bottom:8px; text-align:center; color:#fff; font-size:.8rem; text-shadow:0 1px 3px #000; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  .row[hidden] { display:none; }
+  button, .btn { appearance:none; border:0; background:var(--brand); color:#fff; font-size:1rem; padding:12px 16px; border-radius:10px; cursor:pointer; flex:1 1 auto; text-align:center; font-weight:600; }
+  button:hover, .btn:hover { background:var(--brand-d); }
+  button.sec, .btn.sec { background:#e6eef5; color:var(--ink); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  input[type=file] { display:none; }
+  .bar { height:10px; background:#e6eef5; border-radius:6px; overflow:hidden; margin-top:10px; display:none; position:relative; }
+  .bar.on { display:block; }
+  .bar > i { position:absolute; top:0; bottom:0; width:40%; background:var(--brand); border-radius:6px; animation:slide 1.1s ease-in-out infinite; }
+  @keyframes slide { 0% { left:-40%; } 100% { left:100%; } }
+  #status { font-size:.9rem; color:var(--muted); margin-top:8px; min-height:1.2em; }
+  #status.err { color:var(--bad); }
+  textarea { width:100%; min-height:220px; border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; font-size:1rem; resize:vertical; }
+  .warn { background:var(--warn-bg); border:1px solid var(--warn-line); border-radius:10px; padding:10px 12px; font-size:.88rem; margin-bottom:12px; }
+  .priv { font-size:.8rem; color:var(--muted); margin:10px 0 0; }
+  label { font-size:.85rem; color:var(--muted); display:block; margin-bottom:4px; }
+  input[type=password], select { width:100%; padding:10px; border:1px solid var(--line); border-radius:10px; font-size:1rem; background:#fff; color:var(--ink); margin-bottom:10px; }
+  label.chk { display:flex; align-items:center; gap:8px; color:var(--ink); margin-bottom:12px; }
+  label.chk input { width:auto; margin:0; }
+  .priv a { color:var(--brand); }
+  h2 { font-size:1rem; margin:0 0 8px; }
+  #info { font-size:.92rem; margin-bottom:10px; }
+  #info div { margin:2px 0; }
+  #info b { color:var(--muted); font-weight:600; }
+  .med { border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+  .med.unsure { border-color:var(--warn-line); background:var(--warn-bg); }
+  .med .top { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+  .med b.n { font-size:1rem; }
+  .med span.f { display:block; font-size:.9rem; color:var(--muted); }
+  .badge { font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .badge.alta { background:#dff3e4; color:var(--ok); }
+  .badge.media { background:#ffe9b3; color:#7a5200; }
+  .badge.baja { background:#fbd9d6; color:var(--bad); }
+  .med em { display:block; font-size:.82rem; font-style:normal; color:#7a5200; margin-top:5px; }
+  .med em.soft { color:var(--muted); }
+  /* ---- Realidad aumentada ---- */
+  .arrow { display:flex; align-items:center; gap:12px; margin:10px 0; }
+  .arrow img { width:64px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--line); background:#e6eef5; flex:none; }
+  .arrow .t { font-size:.88rem; color:var(--muted); }
+  .arrow .t b { color:var(--ink); display:block; }
+  #arLayer { position:fixed; inset:0; z-index:100; background:#000; overflow:hidden; touch-action:none; }
+  #arCam { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  #arBox { position:absolute; left:0; top:0; transform-origin:0 0; pointer-events:none; background:#000; box-shadow:0 0 0 2px rgba(255,255,255,.35); will-change:transform; }
+  #arVid { width:100%; height:100%; object-fit:cover; display:block; }
+  #arMsg { position:absolute; left:12px; right:12px; top:calc(env(safe-area-inset-top) + 12px); text-align:center; color:#fff; font-size:.95rem; text-shadow:0 1px 4px #000; background:rgba(0,0,0,.45); border-radius:10px; padding:8px 12px; }
+  #arBar { position:absolute; left:0; right:0; bottom:0; display:flex; gap:8px; padding:12px 16px calc(env(safe-area-inset-bottom) + 14px); background:linear-gradient(transparent, rgba(0,0,0,.7)); }
+  #arBar button { padding:14px 10px; }
+  #arBar button.exit { background:#b3261e; }
+  #extra { font-size:.88rem; color:var(--muted); margin-top:8px; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Lector de recetas médicas</h1>
+  <p class="sub">Apunta la cámara trasera a la receta y toma la foto. Esa misma foto puede servir de gatillo para ver un video en realidad aumentada.</p>
+
+  <div class="warn">⚠️ La lectura con IA puede equivocarse, sobre todo con letra manuscrita. Verifica siempre nombres de medicamentos y dosis con el médico o el farmacéutico.</div>
+
+  <section class="card" id="keyCard">
+    <label for="apiKey">Clave de API de Google Gemini</label>
+    <input type="password" id="apiKey" placeholder="AIza..." autocomplete="off" spellcheck="false" />
+    <label class="chk"><input type="checkbox" id="rememberKey" /> Recordar en este dispositivo</label>
+    <label for="model">Modelo</label>
+    <select id="model">
+      <option value="gemini-3.8-flash">Gemini 3.8 Flash — equilibrado (recomendado)</option>
+      <option value="gemini-4-argon">Gemini 4 Argon — el más preciso (solo plan de pago)</option>
+      <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite — el más rápido y barato</option>
+    </select>
+    <div class="warn" style="margin:0 0 10px">🔒 <b>Privacidad:</b> con una clave del nivel gratuito, Google puede usar lo que envías para mejorar sus productos; con facturación activada (nivel de pago), no. Las recetas son datos de salud: usa una clave con facturación activada.</div>
+    <p class="priv" style="margin-top:0">Crea tu clave en <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Se guarda solo en este navegador y únicamente se envía a Google. Usa una clave exclusiva para esta app y bórrala cuando no la necesites; no compartas este archivo si dejaste la clave guardada.</p>
+  </section>
+
+  <section class="card">
+    <div class="viewer" id="viewer">
+      <video id="video" playsinline muted autoplay></video>
+      <img id="photo" alt="Foto capturada" hidden />
+      <div class="guide" id="guide"></div>
+      <div class="hint" id="hint">Receta plana, con buena luz y ocupando todo el recuadro</div>
+    </div>
+
+    <div class="row" id="rowIdle">
+      <button id="btnStart">📷 Abrir cámara</button>
+      <label class="btn sec" for="fileCam">Tomar foto (app de cámara)</label>
+      <label class="btn sec" for="fileGal">Elegir de galería</label>
+    </div>
+    <div class="row" id="rowLive" hidden>
+      <button id="btnShot">📸 Capturar</button>
+      <button class="sec" id="btnFlip">🔄 Cambiar cámara</button>
+      <button class="sec" id="btnTorch" hidden>🔦 Linterna</button>
+      <button class="sec" id="btnStop">Cerrar</button>
+    </div>
+    <div class="row" id="rowShot" hidden>
+      <button id="btnRead">🔍 Leer receta</button>
+      <button class="sec" id="btnRetake">Repetir</button>
+      <button class="sec" id="btnTrigFromShot">🎯 Usar como gatillo AR</button>
+    </div>
+
+    <p class="priv">🔒 Al pulsar "Leer receta", la foto (y una versión mejorada de ella) se envía a la API de Google Gemini para analizarla, directamente desde tu navegador.</p>
+
+    <input type="file" id="fileCam" accept="image/*" capture="environment" />
+    <input type="file" id="fileGal" accept="image/*" />
+    <canvas id="canvas" hidden></canvas>
+
+    <div class="bar" id="bar"><i></i></div>
+    <div id="status"></div>
+  </section>
+
+  <section class="card" id="arCard">
+    <h2>🎬 Realidad aumentada</h2>
+    <p class="priv" style="margin:0 0 6px">Elige una foto como gatillo y un video. Al apuntar la cámara a esa foto (impresa o en otra pantalla), el video aparece encima y sigue la foto cuando mueves el celular. Todo ocurre en tu dispositivo: no se envía nada a ningún servidor y no necesita clave.</p>
+
+    <div class="arrow">
+      <img id="trigThumb" alt="Foto gatillo" hidden />
+      <div class="t"><b>1. Foto gatillo</b><span id="trigInfo">Aún no elegida. Usa la foto capturada arriba o elige otra.</span></div>
+    </div>
+    <div class="row" style="margin-top:0">
+      <label class="btn sec" for="fileTrig">Elegir foto gatillo</label>
+      <label class="btn sec" for="fileTrigCam">Tomar foto gatillo</label>
+    </div>
+
+    <div class="arrow" style="margin-top:14px">
+      <div class="t"><b>2. Video</b><span id="vidInfo">Aún no elegido.</span></div>
+    </div>
+    <div class="row" style="margin-top:0">
+      <label class="btn sec" for="fileVid">Elegir video</label>
+    </div>
+
+    <div class="row"><button id="btnAR" disabled>▶ Iniciar realidad aumentada</button></div>
+    <p class="priv">Consejo: una foto con mucho detalle (texto, dibujos, colores variados) se reconoce mucho mejor que una lisa. Mantén la foto completa a la vista y bien iluminada.</p>
+    <input type="file" id="fileTrig" accept="image/*" />
+    <input type="file" id="fileTrigCam" accept="image/*" capture="environment" />
+    <input type="file" id="fileVid" accept="video/*" />
+    <div id="arStatus" class="priv"></div>
+  </section>
+
+  <section class="card" id="medsCard" hidden>
+    <h2>Resultado</h2>
+    <div id="info"></div>
+    <div id="meds"></div>
+    <div id="extra"></div>
+  </section>
+
+  <section class="card">
+    <label for="out">Transcripción (puedes editarla)</label>
+    <textarea id="out" placeholder="Aquí aparecerá el texto de la receta…"></textarea>
+    <div class="row">
+      <button id="btnCopy" class="sec">Copiar</button>
+      <button id="btnClear" class="sec">Limpiar</button>
+    </div>
+  </section>
+</main>
+
+<div id="arLayer" hidden>
+  <video id="arCam" playsinline webkit-playsinline muted autoplay></video>
+  <div id="arBox" hidden><video id="arVid" playsinline webkit-playsinline preload="auto"></video></div>
+  <div id="arMsg">Apunta la cámara a la foto gatillo…</div>
+  <div id="arBar">
+    <button id="arPlay">▶ Play</button>
+    <button class="sec" id="arStop">⏹ Stop</button>
+    <button class="exit" id="arExit">✕ Salir</button>
+  </div>
+</div>
+
+<script>
+// ===== drugs.js =====
+// Diccionario local de medicamentos (genéricos y marcas comunes en español) y validación aproximada.
+// NO es exhaustivo: sirve para detectar lecturas dudosas, nunca para corregir automáticamente.
+
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.Drugs = factory();
+}(typeof self !== 'undefined' ? self : this, function () {
+
+const GENERICOS = [
+  // Analgésicos y antiinflamatorios
+  'paracetamol', 'acetaminofén', 'ibuprofeno', 'naproxeno', 'diclofenaco', 'ketorolaco', 'metamizol', 'dipirona',
+  'nimesulida', 'meloxicam', 'celecoxib', 'etoricoxib', 'tramadol', 'codeína', 'morfina', 'ácido acetilsalicílico',
+  'aspirina', 'dexketoprofeno', 'piroxicam', 'indometacina', 'ketoprofeno', 'butilhioscina', 'hioscina',
+  // Antibióticos
+  'amoxicilina', 'amoxicilina con ácido clavulánico', 'ampicilina', 'penicilina', 'azitromicina', 'claritromicina',
+  'eritromicina', 'ciprofloxacino', 'levofloxacino', 'norfloxacino', 'cefalexina', 'cefuroxima', 'ceftriaxona',
+  'cefadroxilo', 'cefixima', 'doxiciclina', 'tetraciclina', 'minociclina', 'clindamicina', 'metronidazol', 'tinidazol',
+  'trimetoprima', 'sulfametoxazol', 'nitrofurantoína', 'gentamicina', 'amikacina', 'fosfomicina', 'linezolid',
+  'vancomicina', 'rifampicina', 'isoniazida', 'mupirocina', 'ácido fusídico',
+  // Antifúngicos y antiparasitarios
+  'fluconazol', 'ketoconazol', 'itraconazol', 'nistatina', 'clotrimazol', 'terbinafina', 'albendazol', 'mebendazol',
+  'ivermectina', 'praziquantel', 'nitazoxanida', 'secnidazol',
+  // Antivirales
+  'aciclovir', 'valaciclovir', 'oseltamivir',
+  // Gastroenterología
+  'omeprazol', 'esomeprazol', 'pantoprazol', 'lansoprazol', 'ranitidina', 'famotidina', 'domperidona', 'metoclopramida',
+  'ondansetrón', 'loperamida', 'bismuto', 'sucralfato', 'lactulosa', 'simeticona', 'hidróxido de aluminio',
+  'sales de rehidratación oral', 'mesalazina',
+  // Respiratorio y alergia
+  'salbutamol', 'budesonida', 'fluticasona', 'beclometasona', 'ipratropio', 'montelukast', 'loratadina', 'desloratadina',
+  'cetirizina', 'levocetirizina', 'fexofenadina', 'clorfeniramina', 'difenhidramina', 'ambroxol', 'bromhexina',
+  'acetilcisteína', 'carbocisteína', 'dextrometorfano', 'teofilina', 'tiotropio',
+  // Cardiovascular
+  'enalapril', 'lisinopril', 'captopril', 'ramipril', 'losartán', 'valsartán', 'candesartán', 'telmisartán', 'irbesartán',
+  'amlodipino', 'nifedipino', 'atenolol', 'metoprolol', 'bisoprolol', 'carvedilol', 'propranolol', 'hidroclorotiazida',
+  'clortalidona', 'furosemida', 'espironolactona', 'digoxina', 'amiodarona', 'isosorbida', 'nitroglicerina',
+  'atorvastatina', 'simvastatina', 'rosuvastatina', 'pravastatina', 'lovastatina', 'fenofibrato', 'gemfibrozilo',
+  'ezetimiba', 'warfarina', 'acenocumarol', 'clopidogrel', 'rivaroxabán', 'apixabán', 'dabigatrán', 'heparina',
+  'enoxaparina', 'verapamilo', 'diltiazem', 'clonidina', 'metildopa', 'hidralazina', 'doxazosina', 'prazosina',
+  'sacubitrilo',
+  // Diabetes, endocrino y corticoides
+  'metformina', 'glibenclamida', 'glimepirida', 'gliclazida', 'sitagliptina', 'vildagliptina', 'linagliptina',
+  'empagliflozina', 'dapagliflozina', 'pioglitazona', 'insulina', 'levotiroxina', 'metimazol', 'prednisona',
+  'prednisolona', 'dexametasona', 'betametasona', 'hidrocortisona', 'metilprednisolona', 'deflazacort', 'alendronato',
+  'calcitriol', 'calcio', 'vitamina D', 'colecalciferol',
+  // Neurología y psiquiatría
+  'diazepam', 'alprazolam', 'clonazepam', 'lorazepam', 'bromazepam', 'midazolam', 'zolpidem', 'fenobarbital',
+  'fenitoína', 'carbamazepina', 'ácido valproico', 'valproato', 'lamotrigina', 'levetiracetam', 'topiramato',
+  'gabapentina', 'pregabalina', 'amitriptilina', 'nortriptilina', 'imipramina', 'fluoxetina', 'sertralina',
+  'paroxetina', 'citalopram', 'escitalopram', 'venlafaxina', 'duloxetina', 'mirtazapina', 'trazodona', 'bupropión',
+  'litio', 'haloperidol', 'risperidona', 'olanzapina', 'quetiapina', 'aripiprazol', 'clozapina', 'metilfenidato',
+  'sumatriptán', 'rizatriptán', 'flunarizina', 'betahistina', 'levodopa', 'carbidopa', 'pramipexol', 'donepezilo',
+  'memantina', 'baclofeno', 'ciclobenzaprina', 'tizanidina', 'carisoprodol', 'orfenadrina', 'tiocolchicósido',
+  'melatonina',
+  // Urología y ginecología
+  'tamsulosina', 'finasterida', 'sildenafilo', 'tadalafilo', 'oxibutinina', 'solifenacina', 'fenazopiridina',
+  'levonorgestrel', 'etinilestradiol', 'drospirenona', 'medroxiprogesterona', 'progesterona', 'estradiol', 'misoprostol',
+  'ácido fólico', 'hierro', 'sulfato ferroso', 'clomifeno', 'letrozol', 'tamoxifeno', 'anastrozol',
+  // Reumatología, vitaminas y otros
+  'alopurinol', 'colchicina', 'febuxostat', 'metotrexato', 'hidroxicloroquina', 'azatioprina', 'ciclosporina',
+  'tacrolimus', 'leflunomida', 'sulfasalazina', 'cianocobalamina', 'tiamina', 'piridoxina', 'complejo B',
+  'vitamina C', 'zinc', 'ácido tranexámico', 'vitamina K', 'fitomenadiona', 'lidocaína', 'bencidamina',
+  'povidona yodada', 'clorhexidina', 'ácido hialurónico', 'mometasona', 'clobetasol', 'tretinoína', 'adapaleno',
+  'peróxido de benzoílo', 'ketotifeno', 'brimonidina', 'timolol', 'latanoprost', 'tobramicina', 'dorzolamida'
+];
+
+const MARCAS = [
+  'dolex', 'tylenol', 'panadol', 'advil', 'motrin', 'voltaren', 'buscapina', 'augmentin', 'zithromax', 'flagyl',
+  'nolotil', 'enantyum', 'tempra', 'aleve', 'losec', 'nexium', 'clarityne', 'zyrtec', 'ventolin', 'glucophage',
+  'synthroid', 'euthyrox', 'lipitor', 'crestor', 'norvasc', 'cozaar', 'xanax', 'rivotril', 'valium', 'lexotanil',
+  'ibupirac', 'mucosolvan', 'bisolvon', 'amoxil', 'cipro', 'diflucan', 'lyrica', 'neurontin', 'seroquel', 'prozac',
+  'zoloft', 'lexapro', 'cialis', 'viagra', 'plavix', 'coumadin', 'lasix', 'aldactone', 'tamiflu', 'zovirax'
+];
+
+const STOP = new Set(['con', 'sin', 'por', 'para', 'del', 'las', 'los', 'una', 'uno']);
+
+function norm(s) {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Conjunto de palabras conocidas (a nivel de palabra, para nombres compuestos)
+const TOKENS = new Set();
+for (const e of [...GENERICOS, ...MARCAS]) {
+  for (const t of norm(e).split(' ')) if (t.length >= 4 && !STOP.has(t)) TOKENS.add(t);
+}
+const TOKEN_LIST = [...TOKENS];
+
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+function maxDist(len) { return len <= 5 ? 1 : 2; }
+
+// Quita concentración, forma farmacéutica y unidades del nombre leído
+function limpiarNombre(nombre) {
+  return norm(nombre)
+    .replace(/\b(\d.*|mg|mcg|ug|ml|ui|comprimidos?|tabletas?|tab|comp|capsulas?|caps|jarabe|suspension|gotas|ampollas?|sobres?|crema|gel|pomada|solucion|inyectable|ovulos?|supositorios?)\b.*$/, '')
+    .trim();
+}
+
+function validarMedicamento(nombre) {
+  const limpio = limpiarNombre(nombre);
+  const tokens = limpio.split(' ').filter(t => t.length >= 4 && !STOP.has(t));
+  if (!tokens.length) return { estado: 'sin_datos', sugerencia: '' };
+
+  let todosConocidos = true;
+  let hayCercano = false;
+  const reemplazos = [];
+  const salida = limpio.split(' ');
+
+  for (const t of tokens) {
+    if (TOKENS.has(t)) continue;
+    todosConocidos = false;
+    let best = null, bestD = Infinity;
+    for (const k of TOKEN_LIST) {
+      if (Math.abs(k.length - t.length) > 2) continue;
+      const d = levenshtein(t, k);
+      if (d < bestD) { bestD = d; best = k; }
+    }
+    if (best && bestD <= maxDist(t.length)) {
+      hayCercano = true;
+      reemplazos.push([t, best]);
+    }
+  }
+
+  if (todosConocidos) return { estado: 'coincide', sugerencia: '' };
+  if (hayCercano) {
+    for (const [t, k] of reemplazos) {
+      const i = salida.indexOf(t);
+      if (i !== -1) salida[i] = k;
+    }
+    return { estado: 'similar', sugerencia: salida.join(' ') };
+  }
+  return { estado: 'no_encontrado', sugerencia: '' };
+}
+
+return { validarMedicamento, limpiarNombre, norm, levenshtein };
+}));
+
+</script>
+<script>
+// ===== core.js =====
+// Núcleo compartido (navegador y Node): prompt, petición a la API y validación de la respuesta.
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./drugs.js'));
+  else root.Core = factory(root.Drugs);
+}(typeof self !== 'undefined' ? self : this, function (Drugs) {
+
+const SYSTEM = `Eres un experto en leer recetas médicas escritas a mano o impresas en español (España y Latinoamérica). Tu trabajo es transcribir con la máxima fidelidad y señalar con honestidad lo que no se puede leer. Un error en un medicamento o una dosis puede dañar a una persona: ante la duda, marca la duda; nunca la ocultes.
+
+CÓMO LEER
+- Recibirás la misma receta en una o más imágenes: la primera es la foto original en color; la segunda (si existe) es una versión en gris con las sombras y el contraste corregidos. Compáralas: lo que se lea distinto entre ellas es dudoso.
+- La foto puede estar girada, inclinada o con sombras. Léela de todos modos.
+- Lee primero toda la receta, luego línea por línea. Usa el contexto: los nombres de medicamentos suelen ser fármacos reales; la dosis, la vía y la frecuencia deben ser coherentes con ese fármaco. Usa ese contexto solo para proponer ALTERNATIVAS, nunca para sustituir en silencio lo que se ve.
+- En español el separador decimal suele ser la coma ("0,5 mg") y el punto puede separar miles ("1.000 mg"). Conserva el formato original.
+- Confusiones peligrosas de letra manuscrita: 1/7, 0/6, 5/6, 4/9, "mg"/"mcg"/"g", "ml"/"mg", decimales mal vistos (0,5 vs 5), "u" vs "n", "rr" vs "n", "cl" vs "d". Si la unidad o la cifra de una dosis admite dos lecturas, marca la dosis como incierta.
+
+ABREVIATURAS FRECUENTES (expándelas en los campos, conserva el original en la transcripción)
+c/ o cada; h o hs = horas ("c/8h" = cada 8 horas); VO = vía oral; IM = intramuscular; IV = intravenosa; SC = subcutánea; SL = sublingual; tóp. = tópico; c/d = cada día; QD/BID/TID/QID = 1/2/3/4 veces al día; HS = al acostarse; SOS o PRN = si es necesario; AC/PC = antes/después de comidas; x = por (ej. "x 7 d" = por 7 días); d = días; sem = semanas; comp. o tab. = comprimido/tableta; cáps. = cápsula; amp. = ampolla; gts = gotas; jbe = jarabe; susp. = suspensión; sob. = sobre; UI = unidades internacionales; ½ = media unidad; Rp. o R/ = prescripción (encabezado, no es un medicamento).
+
+REGLAS ESTRICTAS
+- No inventes ni completes medicamentos, dosis, frecuencias ni duraciones que no aparezcan.
+- Lo ilegible se escribe [ilegible]. Una palabra dudosa se escribe con "?" al final en la transcripción.
+- Para cada medicamento da "confianza": "alta" (se lee claramente), "media" (probable pero con alguna letra o cifra dudosa) o "baja" (adivinando). Si es "media" o "baja", pon "incierto": true y propone hasta 3 "alternativas" plausibles para el NOMBRE (solo si de verdad son lecturas posibles de lo escrito).
+- No des consejos médicos, no corrijas la prescripción, no interpretes diagnósticos.
+- Si la imagen no es una receta o no se puede leer, pon "legible": false y explícalo en "notas".
+
+FORMATO
+Responde SOLO con un JSON válido, sin texto antes ni después y sin bloques de código:
+{
+  "legible": true,
+  "paciente": "",
+  "medico": "",
+  "fecha": "",
+  "medicamentos": [
+    {
+      "nombre": "",
+      "concentracion": "",
+      "forma": "",
+      "dosis": "",
+      "via": "",
+      "frecuencia": "",
+      "duracion": "",
+      "indicaciones": "",
+      "confianza": "alta",
+      "incierto": false,
+      "alternativas": []
+    }
+  ],
+  "indicaciones_generales": "",
+  "transcripcion": "transcripción completa, conservando saltos de línea",
+  "notas": "partes dudosas, cosas ilegibles, calidad de la foto"
+}
+Deja "" en lo que no aparezca.`;
+
+function fail(status, message) {
+  const e = new Error(message);
+  e.status = status;
+  return e;
+}
+
+function extractJson(text) {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end === -1) throw fail(502, 'El modelo no devolvió un JSON válido');
+  try {
+    return JSON.parse(text.slice(start, end + 1));
+  } catch (e) {
+    throw fail(502, 'El modelo devolvió un JSON mal formado; reintenta');
+  }
+}
+
+const str = v => (typeof v === 'string' ? v.trim() : '');
+
+function postprocess(r) {
+  const lista = Array.isArray(r.medicamentos) ? r.medicamentos : [];
+  const medicamentos = lista.map(m => {
+    const med = {
+      nombre: str(m.nombre), concentracion: str(m.concentracion), forma: str(m.forma), dosis: str(m.dosis),
+      via: str(m.via), frecuencia: str(m.frecuencia), duracion: str(m.duracion), indicaciones: str(m.indicaciones),
+      confianza: ['alta', 'media', 'baja'].includes(m.confianza) ? m.confianza : 'media',
+      incierto: m.incierto === true,
+      alternativas: Array.isArray(m.alternativas) ? m.alternativas.map(str).filter(Boolean).slice(0, 3) : []
+    };
+    const v = Drugs.validarMedicamento(med.nombre);
+    med.validacion = v;
+    if (v.estado === 'similar') {
+      // El diccionario sugiere una lectura distinta: se marca como dudoso, pero no se reemplaza nada.
+      med.incierto = true;
+      if (v.sugerencia && !med.alternativas.includes(v.sugerencia)) med.alternativas.push(v.sugerencia);
+    }
+    if (med.confianza !== 'alta') med.incierto = true;
+    return med;
+  });
+  return {
+    legible: r.legible !== false,
+    paciente: str(r.paciente),
+    medico: str(r.medico),
+    fecha: str(r.fecha),
+    medicamentos,
+    indicaciones_generales: str(r.indicaciones_generales),
+    transcripcion: str(r.transcripcion),
+    notas: str(r.notas)
+  };
+}
+
+// images: [{ data: base64, mediaType }]
+function buildBody(images, model, effort) {
+  const content = images.map(im => ({ type: 'image', source: { type: 'base64', media_type: im.mediaType, data: im.data } }));
+  // Las imágenes van antes del texto (mejor resultado según la documentación)
+  content.push({
+    type: 'text',
+    text: images.length > 1
+      ? 'Transcribe esta receta. La imagen 1 es la foto original y la imagen 2 es la misma foto con sombras y contraste corregidos.'
+      : 'Transcribe esta receta.'
+  });
+  return {
+    model,
+    max_tokens: 16000, // incluye los tokens de razonamiento
+    thinking: { type: 'adaptive' },
+    output_config: { effort: effort || 'high' },
+    system: SYSTEM,
+    messages: [{ role: 'user', content }]
+  };
+}
+
+// data: JSON devuelto por /v1/messages
+function parseResponse(data) {
+  if (data.stop_reason === 'max_tokens') throw fail(502, 'La respuesta se cortó; reintenta o usa el modelo Sonnet');
+  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  if (!text) throw fail(502, 'La IA no devolvió texto (stop_reason: ' + data.stop_reason + ')');
+  return postprocess(extractJson(text));
+}
+
+// ---------------------------------------------------------------------------
+// Google Gemini: API Interactions  ->  POST /v1beta/interactions
+// Cabecera de autenticación: x-goog-api-key. Respuesta: steps[].content[].text
+// ---------------------------------------------------------------------------
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions';
+
+// opts: banderas de campos OPCIONALES que se pueden apagar si un modelo concreto los rechaza.
+function buildGeminiBody(images, model, opts) {
+  const o = Object.assign({ noAlmacenar: true, resolucion: true, razonamiento: true }, opts || {});
+  // Texto primero y luego las imágenes (recomendación de la documentación de Gemini)
+  const input = [{
+    type: 'text',
+    text: images.length > 1
+      ? 'Transcribe esta receta. La imagen 1 es la foto original y la imagen 2 es la misma foto con sombras y contraste corregidos.'
+      : 'Transcribe esta receta.'
+  }];
+  images.forEach(im => {
+    const item = { type: 'image', data: im.data, mime_type: im.mediaType };
+    if (o.resolucion) item.resolution = 'high'; // más detalle para letra pequeña o manuscrita
+    input.push(item);
+  });
+  const generation_config = { max_output_tokens: 24000 }; // incluye los tokens de razonamiento
+  if (o.razonamiento) generation_config.thinking_level = 'high';
+  const body = { model, input, system_instruction: SYSTEM, generation_config };
+  if (o.noAlmacenar) body.store = false; // que Google no guarde la interacción (datos de salud)
+  return body;
+}
+
+// Si la API devuelve 400 nombrando un campo opcional, lo apaga y avisa cuál. null = no era eso.
+function degradarGemini(opts, mensaje) {
+  const reglas = [['noAlmacenar', /\bstore\b/i], ['resolucion', /resolution/i], ['razonamiento', /thinking/i]];
+  for (const [bandera, re] of reglas) {
+    if (opts[bandera] !== false && re.test(mensaje || '')) { opts[bandera] = false; return bandera; }
+  }
+  return null;
+}
+
+function parseGeminiResponse(data) {
+  if (!data || typeof data !== 'object') throw fail(502, 'Respuesta inválida de Gemini');
+  const errores = Array.isArray(data.errors) ? data.errors : [];
+  if (errores.length && data.status !== 'completed') {
+    throw fail(502, 'Gemini: ' + (errores[0].message || errores[0].code || 'error desconocido'));
+  }
+  if (data.status === 'incomplete') {
+    throw fail(502, 'La respuesta se cortó antes de terminar; reintenta o elige un modelo más rápido');
+  }
+  if (data.status === 'failed' || data.status === 'cancelled') {
+    throw fail(502, 'Gemini no pudo completar la lectura (' + data.status + ')');
+  }
+  const pasos = Array.isArray(data.steps) ? data.steps : [];
+  const texto = pasos
+    .filter(s => s && s.type === 'model_output')
+    .map(s => (Array.isArray(s.content) ? s.content : []).filter(c => c && c.type === 'text').map(c => c.text).join(''))
+    .join('\n');
+  if (!texto.trim()) throw fail(502, 'Gemini no devolvió texto (posible bloqueo de seguridad o imagen ilegible)');
+  return postprocess(extractJson(texto));
+}
+
+return { SYSTEM, buildBody, parseResponse, postprocess, extractJson, GEMINI_URL, buildGeminiBody, degradarGemini, parseGeminiResponse };
+}));
+
+</script>
+<script>
+// ===== tracker.js =====
+// Reconocimiento de una foto de referencia (gatillo) en los cuadros de la cámara.
+// Sin librerías: esquinas FAST + descriptores BRIEF orientados (tipo ORB) + homografía con RANSAC.
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.Tracker = factory();
+}(typeof self !== 'undefined' ? self : this, function () {
+
+const BORDER = 24;      // margen sin esquinas (el parche del descriptor necesita sitio)
+const NBITS = 256;
+const SCALES = [1, 0.7, 0.5, 0.35]; // escalas de la foto de referencia (distancia a la que se verá)
+
+// ---------- utilidades de imagen ----------
+function toGray(rgba, w, h) {
+  const g = new Uint8Array(w * h);
+  for (let i = 0, j = 0; j < g.length; i += 4, j++) g[j] = (rgba[i] * 77 + rgba[i + 1] * 150 + rgba[i + 2] * 29) >> 8;
+  return g;
+}
+
+// Desenfoque de caja 5x5 (separable, con sumas móviles)
+function blur5(src, w, h) {
+  const tmp = new Uint16Array(w * h), out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const r = y * w;
+    for (let x = 0; x < w; x++) {
+      let s = 0;
+      for (let k = -2; k <= 2; k++) { const xx = x + k < 0 ? 0 : x + k >= w ? w - 1 : x + k; s += src[r + xx]; }
+      tmp[r + x] = s;
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let s = 0;
+      for (let k = -2; k <= 2; k++) { const yy = y + k < 0 ? 0 : y + k >= h ? h - 1 : y + k; s += tmp[yy * w + x]; }
+      out[y * w + x] = (s / 25) | 0;
+    }
+  }
+  return out;
+}
+
+function resizeGray(src, w, h, nw, nh) { // bilineal
+  const out = new Uint8Array(nw * nh), sx = w / nw, sy = h / nh;
+  for (let y = 0; y < nh; y++) {
+    const fy = Math.max(0, (y + 0.5) * sy - 0.5), y0 = Math.min(h - 1, fy | 0), y1 = Math.min(h - 1, y0 + 1), wy = fy - y0;
+    for (let x = 0; x < nw; x++) {
+      const fx = Math.max(0, (x + 0.5) * sx - 0.5), x0 = Math.min(w - 1, fx | 0), x1 = Math.min(w - 1, x0 + 1), wx = fx - x0;
+      const a = src[y0 * w + x0], b = src[y0 * w + x1], c = src[y1 * w + x0], d = src[y1 * w + x1];
+      out[y * nw + x] = (a + (b - a) * wx) * (1 - wy) + (c + (d - c) * wx) * wy;
+    }
+  }
+  return out;
+}
+
+// ---------- FAST-9 ----------
+const CIRCLE = [[0,-3],[1,-3],[2,-2],[3,-1],[3,0],[3,1],[2,2],[1,3],[0,3],[-1,3],[-2,2],[-3,1],[-3,0],[-3,-1],[-2,-2],[-1,-3]];
+
+function detectFast(g, w, h, thr, maxPts) {
+  const off = CIRCLE.map(([dx, dy]) => dy * w + dx);
+  const score = new Int32Array(w * h);
+  const cand = [];
+  for (let y = BORDER; y < h - BORDER; y++) {
+    for (let x = BORDER; x < w - BORDER; x++) {
+      const i = y * w + x, p = g[i], hi = p + thr, lo = p - thr;
+      // prueba rápida con 4 puntos cardinales
+      let b = 0, d = 0;
+      let v = g[i + off[0]]; if (v > hi) b++; else if (v < lo) d++;
+      v = g[i + off[4]]; if (v > hi) b++; else if (v < lo) d++;
+      v = g[i + off[8]]; if (v > hi) b++; else if (v < lo) d++;
+      v = g[i + off[12]]; if (v > hi) b++; else if (v < lo) d++;
+      if (b < 3 && d < 3) continue;
+      // 9 contiguos más brillantes u oscuros
+      let runB = 0, runD = 0, okB = false, okD = false, sc = 0;
+      for (let k = 0; k < 25; k++) {
+        const q = g[i + off[k & 15]];
+        if (q > hi) { runB++; runD = 0; } else if (q < lo) { runD++; runB = 0; } else { runB = 0; runD = 0; }
+        if (runB >= 9) okB = true;
+        if (runD >= 9) okD = true;
+      }
+      if (!okB && !okD) continue;
+      for (let k = 0; k < 16; k++) { const a = Math.abs(g[i + off[k]] - p) - thr; if (a > 0) sc += a; }
+      score[i] = sc; cand.push(i);
+    }
+  }
+  // supresión de no máximos 3x3
+  const keep = [];
+  for (const i of cand) {
+    const s = score[i];
+    if (s > score[i - 1] && s >= score[i + 1] && s > score[i - w] && s >= score[i + w] &&
+        s > score[i - w - 1] && s >= score[i + w + 1] && s > score[i - w + 1] && s >= score[i + w - 1]) keep.push(i);
+  }
+  keep.sort((a, b) => score[b] - score[a]);
+  // reparto espacial: distancia mínima entre puntos para no agruparlos
+  const cell = 8, gw = Math.ceil(w / cell), occ = new Uint8Array(gw * Math.ceil(h / cell));
+  const pts = [];
+  for (const i of keep) {
+    const x = i % w, y = (i / w) | 0, c = ((y / cell) | 0) * gw + ((x / cell) | 0);
+    if (occ[c]) continue;
+    occ[c] = 1; pts.push({ x, y, s: score[i] });
+    if (pts.length >= maxPts) break;
+  }
+  return pts;
+}
+
+// ---------- BRIEF orientado ----------
+let PAIRS = null;
+function pairs() {
+  if (PAIRS) return PAIRS;
+  let seed = 123456789;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const gauss = () => { let s = 0; for (let i = 0; i < 6; i++) s += rnd(); return (s - 3) / 0.7071; }; // ~N(0,1)
+  const clamp = v => Math.max(-14, Math.min(14, v));
+  PAIRS = new Float32Array(NBITS * 4);
+  for (let i = 0; i < NBITS; i++) {
+    PAIRS[i * 4] = clamp(gauss() * 6); PAIRS[i * 4 + 1] = clamp(gauss() * 6);
+    PAIRS[i * 4 + 2] = clamp(gauss() * 6); PAIRS[i * 4 + 3] = clamp(gauss() * 6);
+  }
+  return PAIRS;
+}
+
+function describe(g, bl, w, h, pts) {
+  const P = pairs();
+  const desc = new Int32Array(pts.length * 8);
+  for (let n = 0; n < pts.length; n++) {
+    const { x, y } = pts[n];
+    // orientación por centroide de intensidad
+    let m01 = 0, m10 = 0;
+    for (let dy = -9; dy <= 9; dy++) {
+      for (let dx = -9; dx <= 9; dx++) {
+        if (dx * dx + dy * dy > 81) continue;
+        const v = g[(y + dy) * w + x + dx];
+        m10 += dx * v; m01 += dy * v;
+      }
+    }
+    const ang = Math.atan2(m01, m10), c = Math.cos(ang), s = Math.sin(ang);
+    pts[n].a = ang;
+    for (let i = 0; i < NBITS; i++) {
+      const ax = P[i * 4], ay = P[i * 4 + 1], bx = P[i * 4 + 2], by = P[i * 4 + 3];
+      const x1 = Math.round(x + c * ax - s * ay), y1 = Math.round(y + s * ax + c * ay);
+      const x2 = Math.round(x + c * bx - s * by), y2 = Math.round(y + s * bx + c * by);
+      if (bl[y1 * w + x1] < bl[y2 * w + x2]) desc[n * 8 + (i >> 5)] |= (1 << (i & 31));
+    }
+  }
+  return desc;
+}
+
+function features(gray, w, h, maxPts, thr) {
+  const bl = blur5(gray, w, h);
+  let pts = detectFast(gray, w, h, thr, maxPts);
+  if (pts.length < 80 && thr > 8) pts = detectFast(gray, w, h, 8, maxPts); // imagen de poco contraste
+  return { pts, desc: describe(gray, bl, w, h, pts) };
+}
+
+// ---------- emparejamiento ----------
+function pc(x) {
+  x = x - ((x >>> 1) & 0x55555555);
+  x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+  return (((x + (x >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
+}
+
+function match(dA, nA, dB, nB) { // A = referencia, B = cuadro. Devuelve [[iA, iB]]
+  const bestB = new Int32Array(nB).fill(-1), bestBd = new Int32Array(nB).fill(999), secB = new Int32Array(nB).fill(999);
+  const bestA = new Int32Array(nA).fill(-1), bestAd = new Int32Array(nA).fill(999);
+  for (let a = 0; a < nA; a++) {
+    const a0 = dA[a*8], a1 = dA[a*8+1], a2 = dA[a*8+2], a3 = dA[a*8+3], a4 = dA[a*8+4], a5 = dA[a*8+5], a6 = dA[a*8+6], a7 = dA[a*8+7];
+    for (let b = 0; b < nB; b++) {
+      const o = b * 8;
+      const d = pc(a0 ^ dB[o]) + pc(a1 ^ dB[o+1]) + pc(a2 ^ dB[o+2]) + pc(a3 ^ dB[o+3]) +
+                pc(a4 ^ dB[o+4]) + pc(a5 ^ dB[o+5]) + pc(a6 ^ dB[o+6]) + pc(a7 ^ dB[o+7]);
+      if (d < bestBd[b]) { secB[b] = bestBd[b]; bestBd[b] = d; bestB[b] = a; }
+      else if (d < secB[b]) secB[b] = d;
+      if (d < bestAd[a]) { bestAd[a] = d; bestA[a] = b; }
+    }
+  }
+  const out = [];
+  for (let b = 0; b < nB; b++) {
+    const a = bestB[b];
+    if (a < 0 || bestBd[b] > 70) continue;
+    if (bestBd[b] > 0.8 * secB[b]) continue;     // prueba de razón: la mejor debe destacar
+    if (bestA[a] !== b) continue;                 // verificación cruzada
+    out.push([a, b]);
+  }
+  return out;
+}
+
+// ---------- geometría ----------
+function solveLin(A, b, n) { // Gauss con pivoteo parcial; A es n x n (arreglo plano)
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(A[r*n+c]) > Math.abs(A[p*n+c])) p = r;
+    if (Math.abs(A[p*n+c]) < 1e-12) return null;
+    if (p !== c) { for (let k = 0; k < n; k++) { const t = A[c*n+k]; A[c*n+k] = A[p*n+k]; A[p*n+k] = t; } const t = b[c]; b[c] = b[p]; b[p] = t; }
+    for (let r = c + 1; r < n; r++) {
+      const f = A[r*n+c] / A[c*n+c];
+      for (let k = c; k < n; k++) A[r*n+k] -= f * A[c*n+k];
+      b[r] -= f * b[c];
+    }
+  }
+  const x = new Array(n);
+  for (let r = n - 1; r >= 0; r--) {
+    let s = b[r];
+    for (let k = r + 1; k < n; k++) s -= A[r*n+k] * x[k];
+    x[r] = s / A[r*n+r];
+  }
+  return x;
+}
+
+// Homografía (mínimos cuadrados) que lleva src -> dst. src, dst: arreglos [[x,y],...]
+function homography(src, dst) {
+  const n = src.length;
+  if (n < 4) return null;
+  const norm = pts => {
+    let mx = 0, my = 0; pts.forEach(p => { mx += p[0]; my += p[1]; }); mx /= pts.length; my /= pts.length;
+    let d = 0; pts.forEach(p => { d += Math.hypot(p[0] - mx, p[1] - my); }); d = d / pts.length || 1;
+    const s = Math.SQRT2 / d;
+    return { mx, my, s };
+  };
+  const ns = norm(src), nd = norm(dst);
+  const AtA = new Float64Array(64), Atb = new Float64Array(8);
+  const acc = (row, rhs) => {
+    for (let i = 0; i < 8; i++) { Atb[i] += row[i] * rhs; for (let j = 0; j < 8; j++) AtA[i*8+j] += row[i] * row[j]; }
+  };
+  for (let i = 0; i < n; i++) {
+    const x = (src[i][0] - ns.mx) * ns.s, y = (src[i][1] - ns.my) * ns.s;
+    const u = (dst[i][0] - nd.mx) * nd.s, v = (dst[i][1] - nd.my) * nd.s;
+    acc([x, y, 1, 0, 0, 0, -u * x, -u * y], u);
+    acc([0, 0, 0, x, y, 1, -v * x, -v * y], v);
+  }
+  const h = solveLin(AtA, Atb, 8);
+  if (!h) return null;
+  const Hn = [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1];
+  // Desnormalizar: H = Td^-1 * Hn * Ts
+  const Ts = [ns.s, 0, -ns.s * ns.mx, 0, ns.s, -ns.s * ns.my, 0, 0, 1];
+  const Tdi = [1 / nd.s, 0, nd.mx, 0, 1 / nd.s, nd.my, 0, 0, 1];
+  const H = mul3(Tdi, mul3(Hn, Ts));
+  const k = H[8] || 1;
+  return H.map(v => v / k);
+}
+
+function mul3(a, b) {
+  const o = new Array(9).fill(0);
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) for (let k = 0; k < 3; k++) o[i*3+j] += a[i*3+k] * b[k*3+j];
+  return o;
+}
+
+function apply(H, x, y) {
+  const w = H[6] * x + H[7] * y + H[8];
+  return [(H[0] * x + H[1] * y + H[2]) / w, (H[3] * x + H[4] * y + H[5]) / w];
+}
+
+function quadOk(q, fw, fh) {
+  let sign = 0;
+  for (let i = 0; i < 4; i++) {
+    const a = q[i], b = q[(i + 1) % 4], c = q[(i + 2) % 4];
+    const cr = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+    if (!isFinite(cr) || cr === 0) return false;
+    if (sign === 0) sign = Math.sign(cr); else if (Math.sign(cr) !== sign) return false; // convexo
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 12) return false;
+    if (Math.abs(q[i][0]) > fw * 3 || Math.abs(q[i][1]) > fh * 3) return false;
+  }
+  let area = 0;
+  for (let i = 0; i < 4; i++) { const a = q[i], b = q[(i + 1) % 4]; area += a[0] * b[1] - b[0] * a[1]; }
+  area = Math.abs(area) / 2;
+  return area > fw * fh * 0.008 && area < fw * fh * 6;
+}
+
+function ransac(S, D, rw, rh, fw, fh, seed) {
+  const n = S.length;
+  if (n < 10) return null;
+  let s = seed >>> 0 || 7;
+  const rnd = m => { s = (s * 1664525 + 1013904223) >>> 0; return (s >>> 8) % m; };
+  const TH = 3.2;
+  let best = null, bestN = 0;
+  const countIn = H => {
+    let c = 0; const idx = [];
+    for (let i = 0; i < n; i++) {
+      const p = apply(H, S[i][0], S[i][1]);
+      if (Math.hypot(p[0] - D[i][0], p[1] - D[i][1]) < TH) { c++; idx.push(i); }
+    }
+    return idx;
+  };
+  for (let it = 0; it < 220; it++) {
+    const ids = [];
+    while (ids.length < 4) { const k = rnd(n); if (!ids.includes(k)) ids.push(k); }
+    const H = homography(ids.map(i => S[i]), ids.map(i => D[i]));
+    if (!H) continue;
+    const q = [[0, 0], [rw, 0], [rw, rh], [0, rh]].map(c => apply(H, c[0], c[1]));
+    if (!quadOk(q, fw, fh)) continue;
+    const idx = countIn(H);
+    if (idx.length > bestN) { bestN = idx.length; best = idx; if (bestN > 0.7 * n) break; }
+  }
+  if (!best || bestN < 12) return null;
+  // refinar con todos los aciertos (dos pasadas)
+  let H = homography(best.map(i => S[i]), best.map(i => D[i]));
+  for (let r = 0; r < 2 && H; r++) {
+    const idx = countIn(H);
+    if (idx.length < 12) return null;
+    const H2 = homography(idx.map(i => S[i]), idx.map(i => D[i]));
+    if (!H2) break;
+    H = H2; best = idx;
+  }
+  if (!H) return null;
+  const quad = [[0, 0], [rw, 0], [rw, rh], [0, rh]].map(c => apply(H, c[0], c[1]));
+  if (!quadOk(quad, fw, fh)) return null;
+  return { H, quad, inliers: best.length, matches: n };
+}
+
+// ---------- API ----------
+// rgba: datos RGBA de la foto de referencia ya reducida a w x h
+function makeReference(rgba, w, h) {
+  const g0 = toGray(rgba, w, h);
+  const levels = [];
+  for (const sc of SCALES) {
+    const lw = Math.round(w * sc), lh = Math.round(h * sc);
+    if (Math.min(lw, lh) < BORDER * 2 + 20) continue;
+    const g = sc === 1 ? g0 : resizeGray(g0, w, h, lw, lh);
+    const f = features(g, lw, lh, 260, 18);
+    if (f.pts.length >= 8) levels.push({ scale: sc, pts: f.pts, desc: f.desc });
+  }
+  return { w, h, levels, count: levels.length ? levels[0].pts.length : 0 };
+}
+
+// Busca la referencia en un cuadro. Devuelve { H, quad, inliers } o null.
+let frameSeed = 1;
+function find(ref, rgba, fw, fh) {
+  const g = toGray(rgba, fw, fh);
+  const f = features(g, fw, fh, 600, 18);
+  if (f.pts.length < 15) return null;
+  let best = null;
+  for (const lv of ref.levels) {
+    const m = match(lv.desc, lv.pts.length, f.desc, f.pts.length);
+    if (m.length < 12) continue;
+    // referencia en coordenadas base (sin escalar)
+    const S = m.map(([a]) => [lv.pts[a].x / lv.scale, lv.pts[a].y / lv.scale]);
+    const D = m.map(([, b]) => [f.pts[b].x, f.pts[b].y]);
+    const r = ransac(S, D, ref.w, ref.h, fw, fh, frameSeed++);
+    if (r && (!best || r.inliers > best.inliers)) best = r;
+  }
+  return best;
+}
+
+return { makeReference, find, homography, apply, toGray, features, quadOk, mul3 };
+}));
+
+</script>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const video = $('video'), photo = $('photo'), canvas = $('canvas');
+  const viewer = $('viewer'), guide = $('guide'), hint = $('hint');
+  const rowIdle = $('rowIdle'), rowLive = $('rowLive'), rowShot = $('rowShot');
+  const btnTorch = $('btnTorch');
+  const statusEl = $('status'), bar = $('bar'), out = $('out');
+  const medsCard = $('medsCard'), infoEl = $('info'), medsEl = $('meds'), extraEl = $('extra');
+  const keyEl = $('apiKey'), rememberEl = $('rememberKey'), modelEl = $('model');
+
+  const MAX_MAIN = 2576;     // lado largo máximo que la IA procesa sin reducir
+  const MAX_ENH = 2000;      // versión realzada (más liviana)
+
+  let stream = null, facing = 'environment', capturedBlob = null, torchOn = false;
+
+  const setStatus = (t, err) => { statusEl.textContent = t; statusEl.className = err ? 'err' : ''; };
+  const show = (el, on) => el.hidden = !on;
+  const newCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+
+  // ---------- Cámara ----------
+  const ALT = ' Alternativa: usa "Tomar foto (app de cámara)", que funciona siempre.';
+
+  function cameraError(e) {
+    const n = e && e.name;
+    if (n === 'NotAllowedError' || n === 'PermissionDeniedError') {
+      return 'Permiso de cámara denegado. Toca el candado o el ícono de cámara junto a la dirección, permite la cámara y vuelve a pulsar "Abrir cámara".' + ALT;
+    }
+    if (n === 'NotFoundError' || n === 'DevicesNotFoundError') return 'No se encontró ninguna cámara en este dispositivo.' + ALT;
+    if (n === 'NotReadableError' || n === 'TrackStartError') {
+      return 'La cámara está siendo usada por otra app o pestaña. Ciérrala y vuelve a intentar.' + ALT;
+    }
+    if (n === 'SecurityError') return 'El navegador bloqueó la cámara por seguridad: la página necesita HTTPS.' + ALT;
+    return 'No se pudo abrir la cámara (' + (n || 'error') + (e && e.message ? ': ' + e.message : '') + ').' + ALT;
+  }
+
+  // Prueba restricciones de más a menos exigentes: algunos celulares rechazan las altas resoluciones
+  async function openStream(face) {
+    face = face || facing;
+    const attempts = [
+      { facingMode: { ideal: face }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      { facingMode: { ideal: face } },
+      true
+    ];
+    let lastErr;
+    for (const constraint of attempts) {
+      try {
+        return await navigator.mediaDevices.getUserMedia({ audio: false, video: constraint });
+      } catch (e) {
+        lastErr = e;
+        // Si el problema es de permisos o seguridad, reintentar no sirve
+        if (e && (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError' || e.name === 'SecurityError')) throw e;
+      }
+    }
+    throw lastErr;
+  }
+
+  async function startCamera() {
+    stopCamera();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus('Este navegador no permite la cámara en vivo desde esta dirección (' + location.protocol + '//). Necesita HTTPS.' + ALT, true);
+      return;
+    }
+    setStatus('Abriendo cámara… acepta el permiso si el navegador lo pide.');
+    try {
+      stream = await openStream();
+
+      // Mostrar el visor ANTES de reproducir: algunos navegadores no reproducen un <video> oculto
+      viewer.classList.add('on');
+      video.hidden = false; photo.hidden = true; guide.hidden = false; hint.hidden = false;
+      show(rowIdle, false); show(rowLive, true); show(rowShot, false);
+      video.srcObject = stream;
+      const p = video.play();
+      if (p && p.catch) p.catch(() => {}); // sin await: "autoplay" arranca el video y play() puede tardar
+
+      const track = stream.getVideoTracks()[0];
+      const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+      show(btnTorch, !!caps.torch);
+      torchOn = false;
+      if (caps.focusMode && caps.focusMode.includes('continuous')) {
+        track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+      }
+      setStatus('');
+    } catch (e) {
+      stopCamera();
+      setStatus(cameraError(e), true);
+    }
+  }
+
+  function stopCamera() {
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    video.srcObject = null;
+  }
+
+  function closeToIdle() {
+    stopCamera();
+    viewer.classList.remove('on');
+    show(rowIdle, true); show(rowLive, false); show(rowShot, false);
+  }
+
+  async function capture() {
+    if (!stream) return;
+    const track = stream.getVideoTracks()[0];
+    setStatus('Capturando…');
+    let blob = null;
+    // Si el navegador lo permite, se toma una foto a resolución completa del sensor (mejor para letra a mano)
+    if (typeof ImageCapture !== 'undefined' && track) {
+      try { blob = await new ImageCapture(track).takePhoto(); } catch {}
+    }
+    if (!blob) {
+      if (!video.videoWidth) { setStatus('La cámara aún no está lista; espera un segundo y vuelve a capturar.', true); return; }
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95));
+    }
+    if (!blob) { setStatus('No se pudo capturar la foto. Reintenta.', true); return; }
+    setCaptured(blob);
+    stopCamera();
+  }
+
+  function setCaptured(blob) {
+    capturedBlob = blob;
+    if (photo.src) URL.revokeObjectURL(photo.src);
+    photo.src = URL.createObjectURL(blob);
+    viewer.classList.add('on');
+    video.hidden = true; photo.hidden = false; guide.hidden = true; hint.hidden = true;
+    show(rowIdle, false); show(rowLive, false); show(rowShot, true);
+    setStatus('Foto lista. Revisa que se lea bien y pulsa "Leer receta".');
+  }
+
+  // ---------- Imagen ----------
+  async function loadBitmap(blob) {
+    try { return await createImageBitmap(blob, { imageOrientation: 'from-image' }); }
+    catch { return await createImageBitmap(blob); }
+  }
+
+  function toBase64(canvasEl, quality) {
+    return new Promise((res, rej) => {
+      canvasEl.toBlob(b => {
+        if (!b) return rej(new Error('No se pudo codificar la imagen'));
+        const fr = new FileReader();
+        fr.onload = () => res(String(fr.result).split(',')[1]);
+        fr.onerror = rej;
+        fr.readAsDataURL(b);
+      }, 'image/jpeg', quality);
+    });
+  }
+
+  function scaled(bmp, max) {
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height)); // nunca se agranda
+    const c = newCanvas(Math.round(bmp.width * k), Math.round(bmp.height * k));
+    c.getContext('2d', { willReadFrequently: true }).drawImage(bmp, 0, 0, c.width, c.height);
+    return c;
+  }
+
+  // Mide nitidez (varianza del laplaciano) y brillo medio en una copia pequeña
+  function quality(bmp) {
+    const c = scaled(bmp, 640), w = c.width, h = c.height;
+    const d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+    const g = new Float32Array(w * h);
+    let sum = 0;
+    for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+      g[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      sum += g[j];
+    }
+    let s = 0, s2 = 0, n = 0;
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        const l = 4 * g[i] - g[i - 1] - g[i + 1] - g[i - w] - g[i + w];
+        s += l; s2 += l * l; n++;
+      }
+    }
+    return { mean: sum / (w * h), sharp: s2 / n - (s / n) * (s / n) };
+  }
+
+  // Versión en gris con corrección de sombras: divide cada píxel por el fondo estimado
+  function enhanced(bmp) {
+    const c = scaled(bmp, MAX_ENH), w = c.width, h = c.height;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    const img = ctx.getImageData(0, 0, w, h), d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      d[i] = d[i + 1] = d[i + 2] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    }
+    ctx.putImageData(img, 0, 0);
+
+    const small = newCanvas(Math.max(1, w >> 4), Math.max(1, h >> 4));
+    const sx = small.getContext('2d');
+    sx.imageSmoothingQuality = 'high';
+    sx.drawImage(c, 0, 0, small.width, small.height);
+    const back = newCanvas(w, h);
+    const bx = back.getContext('2d', { willReadFrequently: true });
+    bx.imageSmoothingEnabled = true; bx.imageSmoothingQuality = 'high';
+    bx.drawImage(small, 0, 0, w, h);
+    const bg = bx.getImageData(0, 0, w, h).data;
+
+    for (let i = 0; i < d.length; i += 4) {
+      const v = Math.min(255, (d[i] / Math.max(bg[i], 20)) * 245);
+      d[i] = d[i + 1] = d[i + 2] = v;
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+
+  // ---------- Resultados ----------
+  function addLine(parent, label, value) {
+    if (!value) return;
+    const d = document.createElement('div');
+    const b = document.createElement('b');
+    b.textContent = label + ': ';
+    d.appendChild(b);
+    d.appendChild(document.createTextNode(value));
+    parent.appendChild(d);
+  }
+
+  function note(parent, text, soft) {
+    const e = document.createElement('em');
+    if (soft) e.className = 'soft';
+    e.textContent = text;
+    parent.appendChild(e);
+  }
+
+  function renderResult(data) {
+    infoEl.textContent = '';
+    addLine(infoEl, 'Paciente', data.paciente);
+    addLine(infoEl, 'Médico', data.medico);
+    addLine(infoEl, 'Fecha', data.fecha);
+
+    medsEl.textContent = '';
+    (Array.isArray(data.medicamentos) ? data.medicamentos : []).forEach(m => {
+      const div = document.createElement('div');
+      div.className = 'med' + (m.incierto ? ' unsure' : '');
+
+      const top = document.createElement('div');
+      top.className = 'top';
+      const name = document.createElement('b');
+      name.className = 'n';
+      name.textContent = (m.nombre || '(sin nombre legible)') + (m.concentracion ? ' ' + m.concentracion : '');
+      const badge = document.createElement('span');
+      const conf = ['alta', 'media', 'baja'].includes(m.confianza) ? m.confianza : 'media';
+      badge.className = 'badge ' + conf;
+      badge.textContent = 'Confianza ' + conf;
+      top.appendChild(name); top.appendChild(badge);
+      div.appendChild(top);
+
+      [['Forma', m.forma], ['Dosis', m.dosis], ['Vía', m.via], ['Frecuencia', m.frecuencia],
+       ['Duración', m.duracion], ['Indicaciones', m.indicaciones]].forEach(([k, v]) => {
+        if (v) { const s = document.createElement('span'); s.className = 'f'; s.textContent = k + ': ' + v; div.appendChild(s); }
+      });
+
+      if (Array.isArray(m.alternativas) && m.alternativas.length) {
+        note(div, '⚠️ Podría decir también: ' + m.alternativas.join(', ') + '. Confírmalo con el médico o farmacéutico.');
+      } else if (m.incierto) {
+        note(div, '⚠️ Lectura dudosa: confirma este dato con el médico o farmacéutico.');
+      }
+      if (m.validacion && m.validacion.estado === 'no_encontrado') {
+        note(div, 'No está en el diccionario local (puede ser una marca o un nombre poco común).', true);
+      }
+      medsEl.appendChild(div);
+    });
+    if (!medsEl.children.length) medsEl.textContent = 'No se detectaron medicamentos.';
+
+    const parts = [];
+    if (data.indicaciones_generales) parts.push('Indicaciones generales: ' + data.indicaciones_generales);
+    if (data.notas) parts.push('Notas: ' + data.notas);
+    extraEl.textContent = parts.join('\n\n');
+    medsCard.hidden = false;
+  }
+
+  // ---------- Clave y modelo (Gemini) ----------
+  // Nombres de almacenamiento propios: así nunca se reutiliza una clave guardada de otro proveedor.
+  const KEY_STORE = 'lector_gemini_key', MODEL_STORE = 'lector_gemini_model';
+  function loadKey() {
+    try {
+      // Versión anterior (Anthropic): su clave ya no se usa y no debe quedar guardada en el navegador
+      localStorage.removeItem('lector_key');
+      localStorage.removeItem('lector_model');
+      const k = localStorage.getItem(KEY_STORE);
+      if (k) { keyEl.value = k; rememberEl.checked = true; }
+      const m = localStorage.getItem(MODEL_STORE);
+      if (m && [...modelEl.options].some(o => o.value === m)) modelEl.value = m;
+    } catch {}
+  }
+  function saveKey() {
+    try {
+      const k = keyEl.value.trim();
+      if (rememberEl.checked && k) localStorage.setItem(KEY_STORE, k);
+      else localStorage.removeItem(KEY_STORE);
+      localStorage.setItem(MODEL_STORE, modelEl.value);
+    } catch {}
+  }
+  loadKey();
+
+  // ---------- Llamada a Gemini ----------
+  function errorGemini(status, msg) {
+    if ([400, 401, 403].includes(status) && /api[ _]?key/i.test(msg)) {
+      return 'Clave de API de Gemini inválida. Revísala en aistudio.google.com/apikey.';
+    }
+    if (status === 401 || status === 403) {
+      return 'La clave no tiene permiso para usar este modelo (Gemini 4 Argon requiere plan de pago). Prueba con Gemini 3.8 Flash.';
+    }
+    if (status === 404) return 'Ese modelo no está disponible para tu clave. Elige otro modelo.';
+    if (status === 429) return 'Límite de uso de Gemini alcanzado (cuota gratuita). Espera un momento o activa la facturación en Google AI Studio.';
+    if (status >= 500) return 'Gemini no está disponible en este momento. Reintenta en unos segundos.';
+    return msg || ('Error de Gemini (' + status + ')');
+  }
+
+  // El navegador llama directamente a la API con la clave del usuario.
+  async function callGemini(images, key, signal) {
+    const opts = { noAlmacenar: true, resolucion: true, razonamiento: true };
+    for (let intento = 0; intento < 4; intento++) {
+      let res;
+      try {
+        res = await fetch(Core.GEMINI_URL, {
+          method: 'POST',
+          signal,
+          headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify(Core.buildGeminiBody(images, modelEl.value, opts))
+        });
+      } catch (e) {
+        if (e.name === 'AbortError') throw e;
+        throw new Error('No se pudo conectar con Gemini. Revisa tu conexión a internet o si una extensión o red bloquea generativelanguage.googleapis.com.');
+      }
+      let j = {};
+      try { j = await res.json(); } catch {}
+      if (res.ok) return Core.parseGeminiResponse(j);
+      const msg = (j.error && j.error.message) || '';
+      // Un campo opcional no admitido por este modelo: se reintenta sin él
+      if (res.status === 400 && Core.degradarGemini(opts, msg)) continue;
+      throw new Error(errorGemini(res.status, msg));
+    }
+    throw new Error('Gemini rechazó la petición; prueba con otro modelo.');
+  }
+
+  // ---------- Lectura ----------
+  async function readReceipt() {
+    if (!capturedBlob) return;
+    const key = keyEl.value.trim();
+    if (!key) {
+      setStatus('Pega tu clave de API de Google Gemini en el recuadro de arriba para poder leer la receta.', true);
+      keyEl.focus();
+      return;
+    }
+    if (/^sk-ant/i.test(key)) { // nunca se envía a Google una clave de otro proveedor
+      setStatus('Esa es una clave de Anthropic (Claude). Aquí hace falta una clave de Google Gemini (suele empezar por "AIza"): créala en aistudio.google.com/apikey.', true);
+      keyEl.focus();
+      return;
+    }
+    saveKey();
+    $('btnRead').disabled = true;
+    bar.classList.add('on');
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 270000);
+    try {
+      setStatus('Preparando imágenes…');
+      const bmp = await loadBitmap(capturedBlob);
+
+      const q = quality(bmp);
+      const problemas = [];
+      if (q.sharp < 25) problemas.push('parece borrosa');
+      if (q.mean < 70) problemas.push('está muy oscura');
+      if (q.mean > 238) problemas.push('está sobreexpuesta');
+      if (problemas.length &&
+          !confirm('La foto ' + problemas.join(' y ') + '. Con letra manuscrita eso baja mucho la precisión.\n\n¿Enviarla de todos modos?\n(Cancelar para repetir la foto)')) {
+        setStatus('Repite la foto con más luz y enfocando bien.');
+        return;
+      }
+
+      const main = scaled(bmp, MAX_MAIN);
+      const images = [{ data: await toBase64(main, 0.92), mediaType: 'image/jpeg' }];
+      try { images.push({ data: await toBase64(enhanced(bmp), 0.9), mediaType: 'image/jpeg' }); } catch {}
+      bmp.close && bmp.close();
+
+      setStatus('Analizando la receta con Gemini (razonamiento detallado). Puede tardar entre unos segundos y un minuto…');
+      const data = await callGemini(images, key, ctrl.signal);
+
+      out.value = (data.transcripcion || '').trim();
+      renderResult(data);
+      setStatus(data.legible === false
+        ? 'La receta no se pudo leer bien. Prueba con una foto más nítida.'
+        : 'Listo. Revisa los datos marcados en amarillo y verifica todo con un profesional.');
+    } catch (e) {
+      setStatus('Error: ' + (e.name === 'AbortError' ? 'se agotó el tiempo de espera' : (e.message || e)), true);
+    } finally {
+      clearTimeout(timer);
+      $('btnRead').disabled = false;
+      bar.classList.remove('on');
+    }
+  }
+
+  $('btnStart').onclick = startCamera;
+  $('btnStop').onclick = closeToIdle;
+  $('btnShot').onclick = capture;
+  $('btnFlip').onclick = () => { facing = facing === 'environment' ? 'user' : 'environment'; startCamera(); };
+  $('btnRetake').onclick = () => { capturedBlob = null; startCamera(); };
+  $('btnRead').onclick = readReceipt;
+  btnTorch.onclick = async () => {
+    const track = stream && stream.getVideoTracks()[0];
+    if (!track) return;
+    torchOn = !torchOn;
+    try { await track.applyConstraints({ advanced: [{ torch: torchOn }] }); }
+    catch { torchOn = !torchOn; setStatus('Linterna no disponible.', true); }
+  };
+
+  for (const id of ['fileCam', 'fileGal']) {
+    $(id).onchange = e => {
+      const f = e.target.files[0];
+      if (f) { stopCamera(); setCaptured(f); }
+      e.target.value = '';
+    };
+  }
+
+  $('btnCopy').onclick = async () => {
+    try { await navigator.clipboard.writeText(out.value); setStatus('Texto copiado.'); }
+    catch { out.select(); document.execCommand('copy'); setStatus('Texto copiado.'); }
+  };
+  $('btnClear').onclick = () => {
+    out.value = ''; infoEl.textContent = ''; medsEl.textContent = ''; extraEl.textContent = '';
+    medsCard.hidden = true; setStatus('');
+  };
+
+
+  // ---------- Realidad aumentada: la foto gatillo hace aparecer un video encima ----------
+  const arLayer = $('arLayer'), arCam = $('arCam'), arBox = $('arBox'), arVid = $('arVid'), arMsg = $('arMsg');
+  const arPlay = $('arPlay'), btnAR = $('btnAR'), arStatus = $('arStatus');
+  const trigThumb = $('trigThumb'), trigInfo = $('trigInfo'), vidInfo = $('vidInfo');
+  const REF_MAX = 480, PROC_MAX = 480, GRACE = 10; // GRACE: cuadros sin ver la foto antes de ocultar el video
+
+  let trig = null, vidUrl = null, arOn = false, arStream = null;
+  let arWant = true, arVisible = false, arLost = 0, arQuad = null, arLast = 0, arRaf = 0;
+  const procCanvas = newCanvas(2, 2), procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
+
+  const arSay = (t, err) => { arStatus.textContent = t; arStatus.style.color = err ? 'var(--bad)' : ''; };
+  const refreshAR = () => { btnAR.disabled = !(trig && vidUrl); };
+
+  async function setTrigger(blob) {
+    arSay('Analizando la foto gatillo…');
+    try {
+      const bmp = await loadBitmap(blob);
+      const k = Math.min(1, REF_MAX / Math.max(bmp.width, bmp.height));
+      const c = newCanvas(Math.max(8, Math.round(bmp.width * k)), Math.max(8, Math.round(bmp.height * k)));
+      const cx = c.getContext('2d', { willReadFrequently: true });
+      cx.drawImage(bmp, 0, 0, c.width, c.height);
+      bmp.close && bmp.close();
+      const ref = Tracker.makeReference(cx.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+      if (ref.count < 25) {
+        trig = null; trigThumb.hidden = true; refreshAR();
+        trigInfo.textContent = 'Esta foto tiene muy poco detalle (' + ref.count + ' puntos). Elige otra con más texto, dibujos o texturas.';
+        arSay('La foto gatillo no sirve: es demasiado lisa o pequeña.', true);
+        return;
+      }
+      if (trigThumb.src) URL.revokeObjectURL(trigThumb.src);
+      trigThumb.src = URL.createObjectURL(blob); trigThumb.hidden = false;
+      trig = { ref };
+      const buena = ref.count >= 120;
+      trigInfo.textContent = 'Lista (' + ref.count + ' puntos de reconocimiento' + (buena ? ', muy buena' : ', suficiente pero mejoraría con más detalle') + ').';
+      arSay('');
+      refreshAR();
+    } catch (e) {
+      trig = null; refreshAR();
+      arSay('No se pudo leer la foto gatillo: ' + (e.message || e), true);
+    }
+  }
+
+  function setVideo(file) {
+    if (vidUrl) URL.revokeObjectURL(vidUrl);
+    vidUrl = URL.createObjectURL(file);
+    vidInfo.textContent = file.name + ' (' + (file.size / 1048576).toFixed(1) + ' MB)';
+    refreshAR();
+    // Comprueba que el navegador pueda reproducirlo
+    const t = document.createElement('video');
+    t.preload = 'metadata';
+    t.onloadedmetadata = () => { vidInfo.textContent = file.name + ' · ' + Math.round(t.duration) + ' s'; };
+    t.onerror = () => { vidUrl = null; refreshAR(); vidInfo.textContent = 'Este formato no se puede reproducir en el navegador. Prueba con MP4 (H.264).'; };
+    t.src = vidUrl;
+  }
+
+  function placeOverlay(pw, ph) {
+    const vw = arCam.videoWidth, vh = arCam.videoHeight, cw = arLayer.clientWidth, ch = arLayer.clientHeight;
+    if (!vw || !cw) return;
+    const s = Math.max(cw / vw, ch / vh), ox = (cw - vw * s) / 2, oy = (ch - vh * s) / 2, k = s / (pw / vw); // object-fit: cover
+    const rw = trig.ref.w, rh = trig.ref.h;
+    const q = arQuad.map(p => [p[0] * k + ox, p[1] * k + oy]);
+    const H = Tracker.homography([[0, 0], [rw, 0], [rw, rh], [0, rh]], q);
+    if (!H) return;
+    arBox.style.width = rw + 'px'; arBox.style.height = rh + 'px';
+    arBox.style.transform = 'matrix3d(' + [H[0], H[3], 0, H[6], H[1], H[4], 0, H[7], 0, 0, 1, 0, H[2], H[5], 0, H[8]].join(',') + ')';
+  }
+
+  function arShow(on) {
+    arVisible = on;
+    arBox.hidden = !on;
+    arMsg.hidden = on;
+    if (on) { if (arWant) tryPlay(); }
+    else arVid.pause();
+  }
+
+  function tryPlay() {
+    const p = arVid.play();
+    if (p && p.catch) p.catch(() => { // el navegador puede exigir silencio para reproducir solo
+      arVid.muted = true;
+      const p2 = arVid.play(); if (p2 && p2.catch) p2.catch(() => {});
+    });
+  }
+
+  function onFrameResult(r, pw, ph) {
+    if (r) {
+      arLost = 0;
+      const diag = Math.hypot(pw, ph) * 0.25;
+      if (!arQuad) arQuad = r.quad.map(p => p.slice());
+      else {
+        const jump = r.quad.reduce((a, p, i) => a + Math.hypot(p[0] - arQuad[i][0], p[1] - arQuad[i][1]), 0) / 4;
+        const a = jump > diag ? 1 : 0.6; // suaviza el temblor; si salta mucho, se coloca directo
+        arQuad = arQuad.map((p, i) => [p[0] + (r.quad[i][0] - p[0]) * a, p[1] + (r.quad[i][1] - p[1]) * a]);
+      }
+      placeOverlay(pw, ph);
+      if (!arVisible) arShow(true);
+    } else if (++arLost > GRACE && arVisible) {
+      arQuad = null;
+      arShow(false);
+    }
+  }
+
+  function arLoop() {
+    if (!arOn) return;
+    arRaf = requestAnimationFrame(arLoop);
+    const now = performance.now();
+    if (!arStream || !arCam.videoWidth || now - arLast < 70) return;
+    arLast = now;
+    const vw = arCam.videoWidth, vh = arCam.videoHeight, k = Math.min(1, PROC_MAX / Math.max(vw, vh));
+    const pw = Math.round(vw * k), ph = Math.round(vh * k);
+    if (procCanvas.width !== pw || procCanvas.height !== ph) { procCanvas.width = pw; procCanvas.height = ph; }
+    procCtx.drawImage(arCam, 0, 0, pw, ph);
+    let r = null;
+    try { r = Tracker.find(trig.ref, procCtx.getImageData(0, 0, pw, ph).data, pw, ph); } catch (e) { r = null; }
+    onFrameResult(r, pw, ph);
+  }
+
+  async function arOpenCam() {
+    arStream = await openStream('environment');
+    arCam.srcObject = arStream;
+    const p = arCam.play(); if (p && p.catch) p.catch(() => {});
+  }
+  function arPauseCam() {
+    if (arStream) { arStream.getTracks().forEach(t => t.stop()); arStream = null; }
+    arCam.srcObject = null;
+    arShow(false);
+  }
+  async function arResumeCam() {
+    try { await arOpenCam(); } catch (e) { arExit(); arSay(cameraError(e), true); }
+  }
+
+  async function arStart() {
+    if (!trig || !vidUrl) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      arSay('Este navegador no permite la cámara en vivo desde esta dirección (' + location.protocol + '//). Necesita HTTPS.', true);
+      return;
+    }
+    stopCamera(); closeToIdle();
+    // Desbloquea el audio/reproducción del video dentro del toque del usuario
+    arVid.src = vidUrl; arVid.muted = false; arVid.loop = false;
+    const u = arVid.play(); if (u && u.then) u.then(() => { arVid.pause(); arVid.currentTime = 0; }).catch(() => {});
+    arSay('Abriendo cámara…');
+    try { await arOpenCam(); }
+    catch (e) { arSay(cameraError(e), true); return; }
+    arSay('');
+    arOn = true; arWant = true; arQuad = null; arLost = 0;
+    arLayer.hidden = false; arMsg.hidden = false; arBox.hidden = true; arVisible = false;
+    arMsg.textContent = 'Apunta la cámara a la foto gatillo…';
+    document.body.style.overflow = 'hidden';
+    arLoop();
+  }
+
+  function arExit() {
+    arOn = false;
+    cancelAnimationFrame(arRaf);
+    arPauseCam();
+    arVid.pause();
+    arLayer.hidden = true;
+    document.body.style.overflow = '';
+  }
+
+  arVid.addEventListener('play', () => { arPlay.textContent = '⏸ Pausa'; });
+  arVid.addEventListener('pause', () => { arPlay.textContent = '▶ Play'; });
+  arVid.addEventListener('ended', () => { arWant = false; arPlay.textContent = '▶ Play'; });
+  arPlay.onclick = () => {
+    if (!arVid.paused) { arWant = false; arVid.pause(); return; } // pausa manual
+    arWant = true;
+    if (arVisible) { if (arVid.ended) arVid.currentTime = 0; tryPlay(); }
+    else arMsg.textContent = 'Apunta la cámara a la foto gatillo para reproducir…';
+  };
+  $('arStop').onclick = () => { arWant = false; arVid.pause(); arVid.currentTime = 0; };
+  $('arExit').onclick = arExit;
+  btnAR.onclick = arStart;
+
+  $('btnTrigFromShot').onclick = () => { if (capturedBlob) { setTrigger(capturedBlob); $('arCard').scrollIntoView({ behavior: 'smooth' }); } };
+  for (const id of ['fileTrig', 'fileTrigCam']) {
+    $(id).onchange = e => { const f = e.target.files[0]; if (f) setTrigger(f); e.target.value = ''; };
+  }
+  $('fileVid').onchange = e => { const f = e.target.files[0]; if (f) setVideo(f); e.target.value = ''; };
+
+  // Para pruebas automáticas
+  window.__ar = { get quad() { return arQuad; }, get visible() { return arVisible; }, get on() { return arOn; } };
+
+  // Al salir de la pestaña se apaga la cámara (privacidad y batería) y se reanuda al volver
+  let resumeCam = false, resumeAR = false;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && stream) { resumeCam = true; stopCamera(); }
+    else if (!document.hidden && resumeCam) { resumeCam = false; startCamera(); }
+    if (document.hidden && arOn) { resumeAR = true; arPauseCam(); }
+    else if (!document.hidden && resumeAR) { resumeAR = false; arResumeCam(); }
+  });
+})();
+</script>
+</body>
+</html>
